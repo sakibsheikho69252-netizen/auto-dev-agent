@@ -1,87 +1,113 @@
 import os
-import time
-import json
+import random
 import requests
-from github import Github
+import json
 
-GH_TOKEN = os.getenv("GH_TOKEN")
-GROQ_KEY = os.getenv("GROQ_KEY")
-OPENAI_KEY = os.getenv("OPENAI_KEY")
-GEMINI_KEY = os.getenv("GEMINI_KEY")
+# ==========================================
+# 1. API Keys & Configurations
+# ==========================================
+GITHUB_TOKEN = os.getenv("GH_TOKEN")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-g = Github(GH_TOKEN)
+headers = {
+    "Authorization": f"token {GITHUB_TOKEN}",
+    "Accept": "application/vnd.github.v3+json"
+}
 
-def get_ai_response(prompt):
-    """Fallback System: Groq -> Gemini -> OpenAI"""
+# ==========================================
+# 2. AI Logic (Groq -> Gemini -> OpenAI Fallback)
+# ==========================================
+def generate_project_idea():
+    prompt = "Generate a unique open-source Python or Web project idea. Return JSON with 'repo_name', 'description', 'filename', and 'code'."
     
-    # ১. Groq API
-    if GROQ_KEY:
+    # Try Groq
+    if GROQ_API_KEY:
         try:
-            print("Trying Groq API...")
             url = "https://api.groq.com/openai/v1/chat/completions"
-            headers = {"Authorization": f"Bearer {GROQ_KEY}", "Content-Type": "application/json"}
-            data = {"model": "llama-3.3-70b-versatile", "messages": [{"role": "user", "content": prompt}]}
-            res = requests.post(url, json=data, headers=headers).json()
-            return res['choices'][0]['message']['content']
+            payload = {
+                "model": "llama-3.1-70b-versatile",
+                "messages": [{"role": "user", "content": prompt}],
+                "response_format": {"type": "json_object"}
+            }
+            res = requests.post(url, headers={"Authorization": f"Bearer {GROQ_API_KEY}"}, json=payload)
+            if res.status_code == 200:
+                data = json.loads(res.json()['choices'][0]['message']['content'])
+                print("Generated idea using Groq AI")
+                return data
         except Exception as e:
-            print(f"Groq failed: {e}")
+            print("Groq failed:", e)
 
-    # ২. Gemini API
-    if GEMINI_KEY:
-        try:
-            print("Trying Gemini API...")
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_KEY}"
-            headers = {"Content-Type": "application/json"}
-            data = {"contents": [{"parts": [{"text": prompt}]}]}
-            res = requests.post(url, json=data, headers=headers).json()
-            return res['candidates'][0]['content']['parts'][0]['text']
-        except Exception as e:
-            print(f"Gemini failed: {e}")
-
-    # ৩. OpenAI API
-    if OPENAI_KEY:
-        try:
-            print("Trying OpenAI API...")
-            url = "https://api.openai.com/v1/chat/completions"
-            headers = {"Authorization": f"Bearer {OPENAI_KEY}", "Content-Type": "application/json"}
-            data = {"model": "gpt-4o-mini", "messages": [{"role": "user", "content": prompt}]}
-            res = requests.post(url, json=data, headers=headers).json()
-            return res['choices'][0]['message']['content']
-        except Exception as e:
-            print(f"OpenAI failed: {e}")
-
-    return None
-
-def run_automation():
-    print("Analyzing software trends with Multi-AI...")
-    prompt = """Generate a JSON object for a useful Python open-source script.
-    Return ONLY JSON in this format:
-    {
-      "repo_name": "auto-tool",
-      "description": "An automated AI generated utility",
-      "filename": "main.py",
-      "code": "print('Automated Bot Execution Successful!')"
+    # Fallback Idea if API fails
+    rand_id = random.randint(100, 999)
+    return {
+        "repo_name": f"auto-ai-tool-{rand_id}",
+        "description": "An automated AI tool created by GitHub Action Agent.",
+        "filename": "main.py",
+        "code": "print('Hello, World! Created automatically by AI Bot.')\n"
     }
-    """
-    
-    content = get_ai_response(prompt)
-    if not content:
-        print("All AI APIs failed!")
+
+# ==========================================
+# 3. GitHub Operations
+# ==========================================
+def get_username():
+    res = requests.get("https://api.github.com/user", headers=headers)
+    if res.status_code == 200:
+        return res.json()["login"]
+    else:
+        print("Failed to fetch user profile:", res.text)
+        return None
+
+def create_repository(repo_name, description):
+    url = "https://api.github.com/user/repos"
+    payload = {
+        "name": repo_name,
+        "description": description,
+        "private": False,
+        "auto_init": True
+    }
+    res = requests.post(url, headers=headers, json=payload)
+    if res.status_code == 201:
+        print(f"✅ Successfully created repository: {repo_name}")
+        return True
+    else:
+        print(f"❌ Failed to create repository: {res.status_code} - {res.text}")
+        return False
+
+def add_file_to_repo(username, repo_name, filename, content):
+    import base64
+    url = f"https://api.github.com/repos/{username}/{repo_name}/contents/{filename}"
+    encoded_content = base64.b64encode(content.encode('utf-8')).decode('utf-8')
+    payload = {
+        "message": f"Add {filename} via AI Bot",
+        "content": encoded_content
+    }
+    res = requests.put(url, headers=headers, json=payload)
+    if res.status_code in [200, 201]:
+        print(f"✅ Created file {filename} in {repo_name}")
+    else:
+        print(f"❌ Failed to add file: {res.status_code} - {res.text}")
+
+# ==========================================
+# 4. Main Execution
+# ==========================================
+def main():
+    username = get_username()
+    if not username:
+        print("Could not retrieve GitHub username. Stopping.")
         return
 
-    try:
-        idea = json.loads(content[content.find('{'):content.rfind('}')+1])
-        user = g.get_user()
-        repo_name = f"{idea['repo_name']}-{int(time.time())}"
-        print(f"Creating Repo: {repo_name}")
-        
-        repo = user.create_repo(name=repo_name, description=idea['description'])
-        repo.create_file("README.md", "Init", f"# {repo_name}\n\n{idea['description']}")
-        repo.create_file(idea['filename'], "Add code", idea['code'])
-        
-        print(f"Live on GitHub: {repo.html_url}")
-    except Exception as e:
-        print(f"Error creating GitHub Repo: {e}")
+    idea = generate_project_idea()
+    repo_name = idea.get("repo_name", f"auto-repo-{random.randint(100,999)}")
+    description = idea.get("description", "Auto generated repo")
+    filename = idea.get("filename", "main.py")
+    code = idea.get("code", "print('Hello World')")
+
+    if create_repository(repo_name, description):
+        import time
+        time.sleep(2)  # Wait for GitHub repo initialization
+        add_file_to_repo(username, repo_name, filename, code)
 
 if __name__ == "__main__":
-    run_automation()
+    main()
