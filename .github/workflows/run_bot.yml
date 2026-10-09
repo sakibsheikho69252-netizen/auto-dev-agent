@@ -1,29 +1,30 @@
 name: Run AI Python Bot
 
 on:
+  workflow_dispatch:
   schedule:
-    - cron: '0 */6 * * *'  # প্রতি ৬ ঘণ্টা পর পর ব্যাকগ্রাউন্ডে স্বয়ংক্রিয়ভাবে চলবে
-  workflow_dispatch:        # ম্যানুয়ালি ক্লিক করে চালানোর জন্য
+    - cron: '0 */6 * * *'
 
 jobs:
   run-python:
     runs-on: ubuntu-latest
     steps:
-      - name: Code Checkout
+      - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Python Setup
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
-      - name: Install Libraries
-        run: pip install PyGithub requests
+      - name: Install Dependencies
+        run: |
+          pip install requests google-generativeai openai
 
-      - name: Execute Script
+      - name: Run Bot Script
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
-          GROQ_KEY: ${{ secrets.GROQ_KEY }}
-          OPENAI_KEY: ${{ secrets.OPENAI_KEY }}
-          GEMINI_KEY: ${{ secrets.GEMINI_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: python bot.py
